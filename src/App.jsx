@@ -216,11 +216,10 @@ function App() {
   useEffect(() => {
     // Sadece kullanıcı giriş yapmışsa ve socket bağlantısı henüz kurulmamışsa devam et.
     if (state.user?.id && !socketRef.current) {
-      // Vite proxy'sini kullanmak için doğrudan adresi kaldırıyoruz.
-      // Bu, socket.io'nun sayfayı sunan sunucuya (Vite dev server) bağlanmasını sağlar.
-      // CANLI ORTAM İÇİN: Backend sunucunuzun adresini buraya yazın.
-      const VITE_BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
-      const socket = io(VITE_BACKEND_URL);
+      // Geliştirme ortamında proxy'yi kullan, canlı ortamda ise Render URL'sini kullan.
+      const VITE_BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+      const socket = VITE_BACKEND_URL ? io(VITE_BACKEND_URL) : io();
+
       socketRef.current = socket;
 
       // Bağlantı kurulduğunda socket.id'yi state'e ekle

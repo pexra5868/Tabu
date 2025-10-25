@@ -8,12 +8,11 @@ export default defineConfig({
     proxy: {
       // '/api' ile başlayan istekleri backend sunucusuna yönlendir
       '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
+        target: 'http://localhost:3001', // Backend sunucunuzun adresi
+        changeOrigin: true, // Farklı origin'ler arası istekler için gerekli
       },
-      // WebSocket bağlantılarını da proxy'le
       '/socket.io': {
-        target: 'http://localhost:3001',
+        target: 'ws://localhost:3001', // WebSocket için
         ws: true,
       },
     },
