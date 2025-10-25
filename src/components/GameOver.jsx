@@ -16,9 +16,11 @@ function GameOver({ score, dispatch, category, user, room }) {
 
     // Eğer kullanıcı girişliyse, kullanıcı adını otomatik al
     const playerName = user.username;
+    const API_URL = import.meta.env.VITE_BACKEND_URL || '';
     dispatch({
       type: 'SAVE_SCORE',
-      payload: { name: playerName, score, category, userId: user ? user.id : null },
+      // API URL'sini payload'a ekleyerek reducer'da kullanılabilir hale getiriyoruz.
+      payload: { name: playerName, score, category, userId: user ? user.id : null, apiUrl: API_URL },
     });
     setScoreSaved(true);
   };
