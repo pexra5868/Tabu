@@ -82,11 +82,19 @@ async function seedDatabase() {
   }
 }
 
+// --- Multiplayer Game Logic ---
+
+const GAME_STATES = {
+  WAITING: 'waiting',
+  PLAYING: 'playing',
+  GAME_OVER: 'game-over',
+};
+
 // Sunucu başlamadan önce veritabanına bağlan
 MongoClient.connect(MONGO_URL)
   .then(async (client) => {
     console.log('MongoDB veritabanına başarıyla bağlanıldı.');
-    const db = client.db(DB_NAME);
+    db = client.db(DB_NAME);
     usersCollection = db.collection('users');
     scoresCollection = db.collection('scores');
     
@@ -273,14 +281,6 @@ MongoClient.connect(MONGO_URL)
     process.exit(1); // Bağlantı başarısız olursa uygulamayı sonlandır
   });
 
-// --- Multiplayer Game Logic ---
-
-const GAME_STATES = {
-  WAITING: 'waiting',
-  PLAYING: 'playing',
-  GAME_OVER: 'game-over',
-};
-
 // Helper: Çok oyunculu oyun bittiğinde istatistikleri güncelle
 async function updatePlayerStats(room) {
   if (!room || !room.teams) return;
@@ -302,6 +302,7 @@ async function updatePlayerStats(room) {
 
   await Promise.all([...winUpdates, ...lossUpdates]);
 }
+
 
 const rooms = {};
 
