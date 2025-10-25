@@ -113,7 +113,7 @@ function gameReducer(state, action) {
     }
     case "SAVE_SCORE": {
       // Backend entegrasyonu
-      if (state.user?.token) {
+      if (state.user?.token && action.payload.apiUrl) {
         fetch(`${action.payload.apiUrl}/api/scores`, {
           method: 'POST',
           headers: {
@@ -156,6 +156,9 @@ function gameReducer(state, action) {
     case "SET_USER": { // Uygulama başlangıcında token kontrolü için
       return { ...state, user: action.payload };
     }
+    case "SET_SOCKET_ID": { // Sadece socketId'yi güncellemek için yeni eylem
+      return { ...state, user: { ...state.user, socketId: action.payload } };
+    }
     // Multiplayer Actions
     case "GO_TO_LOBBY": {
       if (!state.user) return { ...state, gameState: "login" };
@@ -189,9 +192,10 @@ function App() {
   useEffect(() => {
     const token = localStorage.getItem('userToken');
     if (token) {
+      const API_URL = import.meta.env.VITE_BACKEND_URL || '';
       const fetchUser = async () => {
         try {
-          const response = await fetch('/api/users/me', {
+          const response = await fetch(`${API_URL}/api/users/me`, {
             headers: {
               'Authorization': `Bearer ${token}`,
             },
@@ -216,15 +220,14 @@ function App() {
   useEffect(() => {
     // Sadece kullanıcı giriş yapmışsa ve socket bağlantısı henüz kurulmamışsa devam et.
     if (state.user?.id && !socketRef.current) {
-      // Vite proxy'sini kullanmak için doğrudan adresi kaldırıyoruz.
-      // Bu, socket.io'nun sayfayı sunan sunucuya (Vite dev server) bağlanmasını sağlar.
-      // Vite dev server da bu isteği backend'e proxy'leyecektir.
-      const socket = io();
+      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+      const socket = BACKEND_URL ? io(BACKEND_URL) : io();
       socketRef.current = socket;
 
       // Bağlantı kurulduğunda socket.id'yi state'e ekle
       socket.on('connect', () => {
-        originalDispatch({ type: 'SET_USER', payload: { ...state.user, socketId: socket.id } });
+        // Sonsuz döngüyü önlemek için sadece socketId'yi güncelleyen yeni bir eylem kullanıyoruz.
+        originalDispatch({ type: 'SET_SOCKET_ID', payload: socket.id });
       });
 
       const onRoomUpdate = (room) => originalDispatch({ type: 'ROOM_UPDATE', payload: room });
@@ -260,13 +263,13 @@ function App() {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
-  }, [state.user, originalDispatch]); // state.user veya originalDispatch değiştiğinde yeniden çalışır
+  }, [state.user?.id, originalDispatch]); // Sadece user.id değiştiğinde yeniden çalışır, tüm user nesnesi değil.
 
 
   // Multiplayer aksiyonlarını socket'e gönderen sarmalayıcı dispatch
   const dispatch = useCallback((action) => {
     if (socketRef.current) {
-      if (['CREATE_ROOM', 'JOIN_ROOM', 'START_MULTIPLAYER_GAME', 'CHANGE_CATEGORY', 'LEAVE_ROOM', 'JOIN_TEAM', 'RESET_GAME', 'CHANGE_TEAM_NAME'].includes(action.type)) {
+      if (['CREATE_ROOM', 'JOIN_ROOM', 'START_MULTIPLAYER_GAME', 'CHANGE_CATEGORY', 'LEAVE_ROOM', 'JOIN_TEAM', 'RESET_GAME', 'CHANGE_TEAM_NAME', 'MOVE_PLAYER'].includes(action.type)) {
         const eventName = action.type === 'START_MULTIPLAYER_GAME'
           ? 'startGame'
           : action.type.toLowerCase().replace(/_([a-z])/g, g => g[1].toUpperCase());
