@@ -4,6 +4,8 @@ import 'dotenv/config'; // Ortam değişkenlerini yüklemek için
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter"; // Redis adapter
+import { createClient } from "redis"; // Redis client
 import cors from 'cors';
 import { MongoClient, ObjectId } from 'mongodb';
 import bcrypt from 'bcrypt';
@@ -12,7 +14,6 @@ import jwt from 'jsonwebtoken';
 const app = express();
 const PORT = process.env.PORT || 3001; // Render'ın verdiği portu kullan
 const server = createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
 // DİKKAT: Bu anahtarı gerçek bir uygulamada .env dosyası gibi güvenli bir yerde saklayın.
 // Asla doğrudan kodun içine yazmayın.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -20,6 +21,25 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // --- MongoDB Bağlantı Bilgileri ---
 // Eğer MongoDB'yi farklı bir adreste çalıştırıyorsanız veya Atlas gibi bir servis kullanıyorsanız bu adresi güncelleyin.
 const MONGO_URL = process.env.MONGO_URL;
+const REDIS_URL = process.env.REDIS_URL;
+
+const io = new Server(server, {
+  cors: { origin: '*' },
+  // Eğer REDIS_URL varsa, Redis adapter'ı kullan. Yoksa (yerel geliştirme gibi) kullanma.
+  ...(REDIS_URL && { adapter: createAdapter(
+    createClient({ url: REDIS_URL }),
+    createClient({ url: REDIS_URL, return_buffers: true })
+  )})
+});
+
+// Redis bağlantı hatasını yakalamak için
+if (REDIS_URL) {
+  io.of("/").adapter.on("error", (err) => {
+    console.error("Redis adapter hatası:", err);
+  });
+}
+
+
 const DB_NAME = 'tabu-game-db'; // Veritabanı adı
 
 let db;
