@@ -6,11 +6,6 @@ function ProfileScreen({ user, dispatch }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // user nesnesi henüz yüklenmediyse, yükleniyor ekranı göster
-  if (!user) {
-    return <div className="min-h-screen flex items-center justify-center text-2xl">Yükleniyor...</div>;
-  }
-
   useEffect(() => {
     if (!user || !user.id || !user.token) {
       dispatch({ type: 'SHOW_LOGIN' });
@@ -49,14 +44,15 @@ function ProfileScreen({ user, dispatch }) {
           console.warn('Tek oyunculu oyun geçmişi yüklenemedi.');
         }
       } catch (err) {
+        console.error("Profil verisi alınırken hata:", err);
         setError('Sunucuya bağlanılamadı.');
       } finally {
         setLoading(false);
       }
     };
-
-    fetchProfileData();
-  }, [user, user?.id, dispatch]);
+    if (user) fetchProfileData();
+    else setLoading(false);
+  }, [user, dispatch]);
 
   const stats = useMemo(() => {
     if (!gameHistory || gameHistory.length === 0) {
@@ -95,6 +91,11 @@ function ProfileScreen({ user, dispatch }) {
     const winRate = Math.round((wins / totalGames) * 100);
     return { wins, losses, winRate };
   }, [profileData]);
+
+  // user nesnesi henüz yüklenmediyse, yükleniyor ekranı göster
+  if (!user) {
+    return <div className="min-h-screen flex items-center justify-center text-2xl">Yükleniyor...</div>;
+  }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-2xl">Yükleniyor...</div>;
   if (error) return <div className="min-h-screen flex items-center justify-center text-red-500 text-2xl">{error}</div>;

@@ -30,6 +30,7 @@ function AuthScreen({ dispatch, type }) {
         setError(data.message || 'Bir hata oluştu.');
       }
     } catch (err) {
+      console.error("Auth error:", err);
       setError('Sunucuya bağlanılamadı.');
     }
   };

@@ -1,17 +1,17 @@
 // backend/server.js
 
-require('dotenv').config(); // Ortam değişkenlerini yüklemek için
-const express = require('express');
-const http = require('http');
-const { Server } = require("socket.io");
-const cors = require('cors');
-const { MongoClient, ObjectId } = require('mongodb');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+import 'dotenv/config'; // Ortam değişkenlerini yüklemek için
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from "socket.io";
+import cors from 'cors';
+import { MongoClient, ObjectId } from 'mongodb';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
 const app = express();
 const PORT = process.env.PORT || 3001; // Render'ın verdiği portu kullan
-const server = http.createServer(app);
+const server = createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 // DİKKAT: Bu anahtarı gerçek bir uygulamada .env dosyası gibi güvenli bir yerde saklayın.
 // Asla doğrudan kodun içine yazmayın.
@@ -100,8 +100,8 @@ MongoClient.connect(MONGO_URL)
     // --- Middleware ve API Endpoint'leri ---
     // Bu blok, veritabanı bağlantısı kurulduktan SONRA tanımlanmalıdır.
 
-    app.use(cors());
-    app.use(express.json());
+  app.use(cors());
+  app.use(express.json());
 
     // JWT Doğrulama Middleware'i
     function authenticateToken(req, res, next) {
@@ -329,7 +329,6 @@ io.on('connection', (socket) => {
     }
 
     let playerToUpdate;
-    let wasHost = false;
 
     // Oyuncuyu tüm takımlarda ve atanmamışlar listesinde ara
     const allPlayers = [...room.teams.teamA.players, ...room.teams.teamB.players, ...room.unassignedPlayers];
@@ -341,7 +340,6 @@ io.on('connection', (socket) => {
       // Eğer oyuncu host ise, host'un yeni socket.id'sini güncelle
       if (room.host === playerToUpdate.id) {
         room.host = socket.id;
-        wasHost = true;
       }
       // Eğer oyuncunun sırasıysa, sıradaki oyuncunun socket.id'sini güncelle
       if (room.currentTurn === playerToUpdate.id) {
@@ -412,7 +410,7 @@ io.on('connection', (socket) => {
   });
 
   // Yeni: Takıma katılma olayı
-  socket.on('joinTeam', ({ roomId, teamId, userId, username }) => {
+  socket.on('joinTeam', ({ roomId, teamId }) => {
     const room = rooms[roomId];
     if (!room) return;
 
@@ -527,4 +525,142 @@ io.on('connection', (socket) => {
       room.playersInTurnOrder = [];
       const maxPlayers = Math.max(room.teams.teamA.players.length, room.teams.teamB.players.length);
       for (let i = 0; i < maxPlayers; i++) {
-        if (room.teams.teamA.players[i]) room.
+        if (room.teams.teamA.players[i]) room.playersInTurnOrder.push(room.teams.teamA.players[i]);
+        if (room.teams.teamB.players[i]) room.playersInTurnOrder.push(room.teams.teamB.players[i]);
+      }
+      room.deck = [...words[category]]; // Kelime destesini ayarla
+      room.currentTurn = room.playersInTurnOrder[0].id; // İlk oyuncu başlar
+      
+      // İlk kartı çek
+      const { nextCard, updatedDeck } = drawNextCard(room.deck);
+      room.currentCard = nextCard;
+      room.deck = updatedDeck;
+
+      // Önceki zamanlayıcıyı temizle (varsa)
+      if (room.timerId) {
+        clearInterval(room.timerId);
+      }
+
+      // Yeni zamanlayıcıyı başlat
+      room.timerId = setInterval(() => {
+        if (room.time > 0) {
+          room.time--;
+          io.to(roomId).emit('roomUpdate', room);
+        } else {
+          clearInterval(room.timerId);
+          room.gameState = GAME_STATES.GAME_OVER;
+          updatePlayerStats(room); // İstatistikleri güncelle
+          io.to(roomId).emit('roomUpdate', room);
+        }
+      }, 1000);
+
+      io.to(roomId).emit('gameStart', room);
+      io.to(roomId).emit('roomUpdate', room);
+    }
+  });
+
+  // Oyuncu aksiyonları (doğru, tabu, pas)
+  socket.on('playerAction', ({ roomId, action }) => {
+    const room = rooms[roomId];
+    if (!room || room.gameState !== GAME_STATES.PLAYING || socket.id !== room.currentTurn) return;
+
+    // Oyuncunun takımını bul ve skoru güncelle
+    const playerTeamId = room.teams.teamA.players.some(p => p.id === socket.id) ? 'teamA' : 'teamB';
+    if (playerTeamId) {
+      if (action === 'correct') room.teams[playerTeamId].score++;
+      if (action === 'taboo') room.teams[playerTeamId].score--;
+    }
+
+    // Sonraki kartı çek ve sıradaki oyuncuya geç
+    const currentPlayerIndex = room.playersInTurnOrder.findIndex(p => p.id === socket.id);
+    const nextPlayer = room.playersInTurnOrder[(currentPlayerIndex + 1) % room.playersInTurnOrder.length];
+
+    const { nextCard, updatedDeck } = drawNextCard(room.deck);
+    if (!nextCard) {
+      clearInterval(room.timerId); // Kartlar bittiğinde zamanlayıcıyı durdur
+      updatePlayerStats(room); // İstatistikleri güncelle
+      room.gameState = GAME_STATES.GAME_OVER;
+    } else {
+      room.currentCard = nextCard;
+      room.deck = updatedDeck;
+      room.currentTurn = nextPlayer.id;
+    }
+
+    io.to(roomId).emit('roomUpdate', room);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Bir kullanıcı ayrıldı:', socket.id);
+    // Oyuncunun bulunduğu odayı bul ve temizlik yap
+    for (const roomId in rooms) {
+      const room = rooms[roomId];
+      let player, teamId;
+      for (const key in room.teams) {
+        const team = room.teams[key];
+        const p = team.players.find(p => p.id === socket.id);
+        if (p) {
+          player = p;
+          teamId = key;
+          break;
+        }
+      }
+      if (!player) player = room.unassignedPlayers.find(p => p.id === socket.id);
+
+      if (player) {
+        const wasMyTurn = room.gameState === GAME_STATES.PLAYING && room.currentTurn === socket.id;
+        const currentPlayerIndex = room.playersInTurnOrder?.findIndex(p => p.id === socket.id);
+
+        if (teamId) room.teams[teamId].players = room.teams[teamId].players.filter(p => p.id !== socket.id);
+        else room.unassignedPlayers = room.unassignedPlayers.filter(p => p.id !== socket.id);
+
+        const totalPlayers = room.teams.teamA.players.length + room.teams.teamB.players.length + room.unassignedPlayers.length;
+
+        if (totalPlayers === 0) {
+          // Eğer oda boşaldıysa, zamanlayıcıyı temizle ve odayı sil
+          console.log(`Oda ${roomId} kapatılıyor.`);
+          clearInterval(room.timerId);
+          delete rooms[roomId];
+          broadcastRoomList();
+        } else {
+          // Oyun sırasında bir oyuncu ayrıldıysa
+          if (room.gameState === GAME_STATES.PLAYING) {
+            room.playersInTurnOrder.splice(currentPlayerIndex, 1);
+
+            // Eğer bir takım boşaldıysa oyunu bitir
+            if (room.teams.teamA.players.length === 0 || room.teams.teamB.players.length === 0) {
+              clearInterval(room.timerId);
+              updatePlayerStats(room); // İstatistikleri güncelle
+              room.gameState = GAME_STATES.GAME_OVER;
+            } else if (wasMyTurn && room.playersInTurnOrder.length > 0) {
+              // Sırası gelen oyuncu ayrıldıysa, sırayı bir sonraki oyuncuya geçir
+              const nextPlayerIndex = currentPlayerIndex % room.playersInTurnOrder.length;
+              room.currentTurn = room.playersInTurnOrder[nextPlayerIndex].id;
+            }
+          }
+
+          // Eğer ayrılan oyuncu host ise, yeni bir host belirle
+          if (room.host === socket.id) {
+            const allPlayers = [...room.teams.teamA.players, ...room.teams.teamB.players, ...room.unassignedPlayers];
+            if (allPlayers.length > 0) {
+              room.host = allPlayers[0].id;
+            }
+          }
+          io.to(roomId).emit('roomUpdate', room);
+          broadcastRoomList();
+        }
+        break; // Oyuncu bulundu, döngüden çık
+      }
+    }
+  });
+});
+
+// Yardımcı Fonksiyon: Desteden rastgele bir sonraki kartı çeker.
+function drawNextCard(deck) {
+  if (deck.length === 0) {
+    return { nextCard: null, updatedDeck: [] };
+  }
+  const updatedDeck = [...deck];
+  const nextCardIndex = Math.floor(Math.random() * updatedDeck.length);
+  const nextCard = updatedDeck.splice(nextCardIndex, 1)[0];
+  return { nextCard, updatedDeck };
+}

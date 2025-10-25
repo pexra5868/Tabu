@@ -1,29 +1,42 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-import { defineConfig, globalIgnores } from 'eslint/config'
+import globals from "globals";
+import pluginJs from "@eslint/js";
+import pluginReact from "eslint-plugin-react";
+import pluginReactHooks from "eslint-plugin-react-hooks";
+import pluginReactRefresh from "eslint-plugin-react-refresh";
 
-export default defineConfig([
-  globalIgnores(['dist']),
+export default [
+  // Global ayarlar ve frontend (React) için yapılandırma
   {
-    files: ['**/*.{js,jsx}'],
-    extends: [
-      js.configs.recommended,
-      reactHooks.configs['recommended-latest'],
-      reactRefresh.configs.vite,
-    ],
+    files: ["src/**/*.{js,jsx}"],
+    plugins: {
+      react: pluginReact,
+      "react-hooks": pluginReactHooks,
+      "react-refresh": pluginReactRefresh,
+    },
     languageOptions: {
-      ecmaVersion: 2020,
-      globals: globals.browser,
       parserOptions: {
-        ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },
-        sourceType: 'module',
       },
+      globals: globals.browser,
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      ...pluginJs.configs.recommended.rules,
+      ...pluginReact.configs.recommended.rules,
+      ...pluginReactHooks.configs.recommended.rules,
+      "react-refresh/only-export-components": "warn",
+      "react/react-in-jsx-scope": "off",
+      "react/prop-types": "off",
+      "no-unused-vars": "warn",
+    },
+    settings: { react: { version: "detect" } },
+  },
+  // Backend (Node.js) için özel yapılandırma
+  {
+    files: ["backend/**/*.js"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
-])
+];

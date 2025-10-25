@@ -1,4 +1,4 @@
-import { useReducer, useEffect, useRef } from "react";
+import { useReducer, useEffect, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
 import "./App.css"; // Bu satırın üstüne ekleyelim
 import { WORDS_BY_CATEGORY } from "./words";
@@ -114,8 +114,7 @@ function gameReducer(state, action) {
     case "SAVE_SCORE": {
       // Backend entegrasyonu
       if (state.user?.token) {
-        const API_URL = import.meta.env.VITE_BACKEND_URL || '';
-        fetch(`${API_URL}/api/scores`, {
+        fetch('/api/scores', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -192,8 +191,7 @@ function App() {
     if (token) {
       const fetchUser = async () => {
         try {
-          const API_URL = import.meta.env.VITE_BACKEND_URL || '';
-          const response = await fetch(`${API_URL}/api/users/me`, {
+          const response = await fetch('/api/users/me', {
             headers: {
               'Authorization': `Bearer ${token}`,
             },
@@ -262,24 +260,26 @@ function App() {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
-  }, [state.user?.id]); // Sadece kullanıcı ID'si değiştiğinde yeniden çalışır
+  }, [state.user, originalDispatch]); // state.user veya originalDispatch değiştiğinde yeniden çalışır
 
 
   // Multiplayer aksiyonlarını socket'e gönderen sarmalayıcı dispatch
-  const dispatch = (action) => {
+  const dispatch = useCallback((action) => {
     if (socketRef.current) {
-        if (['CREATE_ROOM', 'JOIN_ROOM', 'START_GAME', 'CHANGE_CATEGORY', 'LEAVE_ROOM', 'JOIN_TEAM', 'RESET_GAME', 'CHANGE_TEAM_NAME'].includes(action.type)) {
-          const eventName = action.type.toLowerCase().replace(/_([a-z])/g, g => g[1].toUpperCase());
-          socketRef.current.emit(eventName, { ...action.payload, username: state.user.username, userId: state.user.id, roomId: state.room?.id });
-        } else if (action.type === 'PLAYER_ACTION') {
-          socketRef.current.emit('playerAction', { roomId: state.room.id, action: action.payload.action });
-        } else {
-          originalDispatch(action);
-        }
+      if (['CREATE_ROOM', 'JOIN_ROOM', 'START_MULTIPLAYER_GAME', 'CHANGE_CATEGORY', 'LEAVE_ROOM', 'JOIN_TEAM', 'RESET_GAME', 'CHANGE_TEAM_NAME'].includes(action.type)) {
+        const eventName = action.type === 'START_MULTIPLAYER_GAME'
+          ? 'startGame'
+          : action.type.toLowerCase().replace(/_([a-z])/g, g => g[1].toUpperCase());
+        socketRef.current.emit(eventName, { ...action.payload, username: state.user.username, userId: state.user.id, roomId: state.room?.id });
+      } else if (action.type === 'PLAYER_ACTION') {
+        socketRef.current.emit('playerAction', { roomId: state.room.id, action: action.payload.action });
+      } else {
+        originalDispatch(action);
+      }
     } else {
       originalDispatch(action);
     }
-  };
+  }, [originalDispatch, state.user, state.room]);
 
   useEffect(() => {
     if (state.gameState !== 'playing') return;
@@ -294,7 +294,7 @@ function App() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [state.gameState]);
+  }, [state.gameState, state.time, dispatch]);
 
   if (state.gameState === "not-started") { // Ana menü
     return <StartScreen dispatch={dispatch} user={state.user} />;

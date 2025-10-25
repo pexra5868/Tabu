@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 
 function GameOver({ score, dispatch, category, user, room }) {
-  const [name, setName] = useState('');
   const [scoreSaved, setScoreSaved] = useState(false);
   const isMultiplayer = !!room;
 
@@ -16,7 +15,7 @@ function GameOver({ score, dispatch, category, user, room }) {
     }
 
     // Eğer kullanıcı girişliyse, kullanıcı adını otomatik al
-    const playerName = user ? user.username : name.trim();
+    const playerName = user.username;
     dispatch({
       type: 'SAVE_SCORE',
       payload: { name: playerName, score, category, userId: user ? user.id : null },
