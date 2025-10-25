@@ -114,7 +114,8 @@ function gameReducer(state, action) {
     case "SAVE_SCORE": {
       // Backend entegrasyonu
       if (state.user?.token) {
-        fetch('/api/scores', {
+        const API_URL = import.meta.env.VITE_BACKEND_URL || '';
+        fetch(`${API_URL}/api/scores`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -191,7 +192,8 @@ function App() {
     if (token) {
       const fetchUser = async () => {
         try {
-          const response = await fetch('/api/users/me', {
+          const API_URL = import.meta.env.VITE_BACKEND_URL || '';
+          const response = await fetch(`${API_URL}/api/users/me`, {
             headers: {
               'Authorization': `Bearer ${token}`,
             },
@@ -216,10 +218,10 @@ function App() {
   useEffect(() => {
     // Sadece kullanıcı giriş yapmışsa ve socket bağlantısı henüz kurulmamışsa devam et.
     if (state.user?.id && !socketRef.current) {
-      // Geliştirme ortamında proxy'yi kullan, canlı ortamda ise Render URL'sini kullan.
-      const VITE_BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
-      const socket = VITE_BACKEND_URL ? io(VITE_BACKEND_URL) : io();
-
+      // Vite proxy'sini kullanmak için doğrudan adresi kaldırıyoruz.
+      // Bu, socket.io'nun sayfayı sunan sunucuya (Vite dev server) bağlanmasını sağlar.
+      // Vite dev server da bu isteği backend'e proxy'leyecektir.
+      const socket = io();
       socketRef.current = socket;
 
       // Bağlantı kurulduğunda socket.id'yi state'e ekle

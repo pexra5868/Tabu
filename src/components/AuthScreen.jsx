@@ -9,8 +9,10 @@ function AuthScreen({ dispatch, type }) {
     e.preventDefault();
     setError('');
 
-    // Bu kısım backend API'nize göre değişecektir
-    const endpoint = type === 'login' ? '/api/login' : '/api/register';
+    // Canlıda API adresini, yerelde proxy'yi kullan
+    const API_URL = import.meta.env.VITE_BACKEND_URL || '';
+    const endpoint = `${API_URL}${type === 'login' ? '/api/login' : '/api/register'}`;
+
     try {
       const response = await fetch(endpoint, {
         method: 'POST',

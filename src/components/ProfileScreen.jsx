@@ -27,11 +27,12 @@ function ProfileScreen({ user, dispatch }) {
             'Authorization': `Bearer ${user.token}`,
           },
         };
+        const API_URL = import.meta.env.VITE_BACKEND_URL || '';
 
         // İstekleri paralel olarak başlat
         const [profileResponse, historyResponse] = await Promise.all([
-          fetch(`/api/users/me`, commonHeaders),
-          fetch(`/api/users/${user.id}/history`, commonHeaders)
+          fetch(`${API_URL}/api/users/me`, commonHeaders),
+          fetch(`${API_URL}/api/users/${user.id}/history`, commonHeaders)
         ]);
 
         if (!profileResponse.ok) {

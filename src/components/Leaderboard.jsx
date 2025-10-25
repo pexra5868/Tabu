@@ -7,7 +7,8 @@ function Leaderboard({ dispatch, user }) {
   const [mode, setMode] = useState('scores'); // 'scores' veya 'wins'
 
   useEffect(() => {
-    const endpoint = mode === 'scores' ? '/api/leaderboard' : '/api/leaderboard/wins';
+    const API_URL = import.meta.env.VITE_BACKEND_URL || '';
+    const endpoint = `${API_URL}${mode === 'scores' ? '/api/leaderboard' : '/api/leaderboard/wins'}`;
     const fetchLeaderboard = async () => {
       try {
         const response = await fetch(endpoint);
