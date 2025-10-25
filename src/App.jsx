@@ -215,11 +215,10 @@ function App() {
   // Socket bağlantısı ve event dinleyicileri
   useEffect(() => {
     // Sadece kullanıcı giriş yapmışsa ve socket bağlantısı henüz kurulmamışsa devam et.
-    if (state.user?.id && !socketRef.current) {
-      // Vite proxy'sini kullanmak için doğrudan adresi kaldırıyoruz.
-      // Bu, socket.io'nun sayfayı sunan sunucuya (Vite dev server) bağlanmasını sağlar.
-      // Vite dev server da bu isteği backend'e proxy'leyecektir.
-      const socket = io();
+    if (state.user?.id && !socketRef.current) {      
+      // Canlı ortam için backend URL'sini ortam değişkeninden al, yoksa boş bırak (geliştirme ortamı için).
+      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+      const socket = BACKEND_URL ? io(BACKEND_URL) : io();
       socketRef.current = socket;
 
       // Bağlantı kurulduğunda socket.id'yi state'e ekle
@@ -266,10 +265,8 @@ function App() {
   // Multiplayer aksiyonlarını socket'e gönderen sarmalayıcı dispatch
   const dispatch = useCallback((action) => {
     if (socketRef.current) {
-      if (['CREATE_ROOM', 'JOIN_ROOM', 'START_MULTIPLAYER_GAME', 'CHANGE_CATEGORY', 'LEAVE_ROOM', 'JOIN_TEAM', 'RESET_GAME', 'CHANGE_TEAM_NAME'].includes(action.type)) {
-        const eventName = action.type === 'START_MULTIPLAYER_GAME'
-          ? 'startGame'
-          : action.type.toLowerCase().replace(/_([a-z])/g, g => g[1].toUpperCase());
+      if (['CREATE_ROOM', 'JOIN_ROOM', 'START_MULTIPLAYER_GAME', 'CHANGE_CATEGORY', 'LEAVE_ROOM', 'JOIN_TEAM', 'RESET_GAME', 'CHANGE_TEAM_NAME', 'MOVE_PLAYER'].includes(action.type)) {
+        const eventName = action.type === 'START_MULTIPLAYER_GAME' ? 'startGame' : action.type.toLowerCase().replace(/_([a-z])/g, g => g[1].toUpperCase());
         socketRef.current.emit(eventName, { ...action.payload, username: state.user.username, userId: state.user.id, roomId: state.room?.id });
       } else if (action.type === 'PLAYER_ACTION') {
         socketRef.current.emit('playerAction', { roomId: state.room.id, action: action.payload.action });

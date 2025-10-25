@@ -1,5 +1,13 @@
 import React from 'react';
 import { WORDS_BY_CATEGORY } from '../words';
+import {
+  DndContext,
+  closestCenter,
+  useDroppable,
+  useDraggable,
+} from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
+
 
 function RoomScreen({ room, user, dispatch }) {
   const isHost = room.host === user.socketId;
@@ -7,6 +15,17 @@ function RoomScreen({ room, user, dispatch }) {
   const canStartGame =
     room.teams.teamA.players.length > 0 &&
     room.teams.teamB.players.length > 0;
+
+  const handleDragEnd = (event) => {
+    if (!isHost) return;
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const playerId = active.id;
+      const targetTeamId = over.id;
+      dispatch({ type: 'MOVE_PLAYER', payload: { playerId, targetTeamId } });
+    }
+  };
 
 
   const handleStartGame = () => {
@@ -43,21 +62,23 @@ function RoomScreen({ room, user, dispatch }) {
         <h1 className="text-4xl font-bold text-yellow-400">Oda: {room.name}</h1>
         <p className="text-xl">Oda Kodu: <span className="font-mono bg-gray-700 px-2 py-1 rounded">{room.id}</span></p>
 
-        {room.gameState === 'game-over' && (
-          <div className="w-full bg-gray-900 p-4 rounded-lg">
-            <h2 className="text-2xl text-yellow-400 mb-2">Son Oyunun Skorları</h2>
-            <div className="flex justify-around text-xl">
-              <span>{room.teams.teamA.name}: {room.teams.teamA.score}</span>
-              <span>{room.teams.teamB.name}: {room.teams.teamB.score}</span>
+        <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          {room.gameState === 'game-over' && (
+            <div className="w-full bg-gray-900 p-4 rounded-lg">
+              <h2 className="text-2xl text-yellow-400 mb-2">Son Oyunun Skorları</h2>
+              <div className="flex justify-around text-xl">
+                <span>{room.teams.teamA.name}: {room.teams.teamA.score}</span>
+                <span>{room.teams.teamB.name}: {room.teams.teamB.score}</span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
-          <TeamPanel room={room} team={room.teams.teamA} teamId="teamA" titleColor="text-blue-400" players={room.teams.teamA.players} isHost={isHost} onJoinTeam={handleJoinTeam} user={user} onChangeTeamName={handleChangeTeamName} />
-          <TeamPanel room={room} team={room.teams.teamB} teamId="teamB" titleColor="text-red-400" players={room.teams.teamB.players} isHost={isHost} onJoinTeam={handleJoinTeam} user={user} onChangeTeamName={handleChangeTeamName} />
-          <UnassignedPlayersPanel players={room.unassignedPlayers} onJoinTeam={handleJoinTeam} user={user} />
-        </div>
+          <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+            <TeamPanel room={room} team={room.teams.teamA} teamId="teamA" titleColor="text-blue-400" players={room.teams.teamA.players} isHost={isHost} onJoinTeam={handleJoinTeam} user={user} onChangeTeamName={handleChangeTeamName} />
+            <TeamPanel room={room} team={room.teams.teamB} teamId="teamB" titleColor="text-red-400" players={room.teams.teamB.players} isHost={isHost} onJoinTeam={handleJoinTeam} user={user} onChangeTeamName={handleChangeTeamName} />
+            <UnassignedPlayersPanel players={room.unassignedPlayers} onJoinTeam={handleJoinTeam} user={user} isHost={isHost} />
+          </div>
+        </DndContext>
 
         {/* Kategori Seçimi */}
         <div className="w-full mt-4">
@@ -96,43 +117,59 @@ function RoomScreen({ room, user, dispatch }) {
 }
 
 function TeamPanel({ room, team, teamId, titleColor, players, isHost, onJoinTeam, user, onChangeTeamName }) {
+  const { setNodeRef, isOver } = useDroppable({ id: teamId, disabled: !isHost });
+
   return (
-    <div className={`border ${teamId === 'teamA' ? 'border-blue-500' : teamId === 'teamB' ? 'border-red-500' : 'border-gray-600'} p-4 rounded-lg`}>
+    <div className={`border ${teamId === 'teamA' ? 'border-blue-500' : 'border-red-500'} p-4 rounded-lg transition-all ${isOver ? 'bg-green-500/20' : ''}`}>
       <h3
         onClick={() => onChangeTeamName && onChangeTeamName(teamId)}
         className={`text-2xl font-bold ${titleColor} mb-2 ${isHost && onChangeTeamName ? 'cursor-pointer hover:opacity-75' : ''}`}
       >
         {team.name}
       </h3>
-      <div className="space-y-2 min-h-[80px] bg-gray-900/50 p-2 rounded-md">
+      <div ref={setNodeRef} className="space-y-2 min-h-[120px] bg-gray-900/50 p-2 rounded-md">
         {players.map(p => (
-          <PlayerItem key={p.id} player={p} isSelf={p.id === user.socketId} isRoomHost={p.id === room.host} />
+          <PlayerItem key={p.id} player={p} isSelf={p.id === user.socketId} isRoomHost={p.id === room.host} isDraggable={isHost} />
         ))}
-        {players.length === 0 && <p className="text-gray-500 text-sm p-2">Oyuncuları buraya sürükle</p>}
+        {players.length === 0 && <p className="text-gray-500 text-sm p-4 text-center">Oyuncuları buraya sürükle</p>}
       </div>
       <button onClick={() => onJoinTeam(teamId)} className="mt-4 w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-bold text-white">Bu Takıma Katıl</button>
     </div>
   );
 }
 
-function UnassignedPlayersPanel({ players, onJoinTeam, user }) {
+function UnassignedPlayersPanel({ players, onJoinTeam, user, isHost }) {
+  const { setNodeRef, isOver } = useDroppable({ id: 'unassignedPlayers', disabled: !isHost });
+
   return (
-    <div className="border border-gray-600 p-4 rounded-lg">
+    <div className={`border border-gray-600 p-4 rounded-lg transition-all ${isOver ? 'bg-green-500/20' : ''}`}>
       <h3 className="text-2xl font-bold text-gray-400 mb-2">Atanmamış Oyuncular</h3>
-      <div className="space-y-2 min-h-[80px] bg-gray-900/50 p-2 rounded-md">
+      <div ref={setNodeRef} className="space-y-2 min-h-[120px] bg-gray-900/50 p-2 rounded-md">
         {players.map(p => (
-          <PlayerItem key={p.id} player={p} isSelf={p.id === user.socketId} isRoomHost={false} />
+          <PlayerItem key={p.id} player={p} isSelf={p.id === user.socketId} isRoomHost={false} isDraggable={isHost} />
         ))}
-        {players.length === 0 && <p className="text-gray-500 text-sm p-2">Tüm oyuncular takımlarda.</p>}
+        {players.length === 0 && <p className="text-gray-500 text-sm p-4 text-center">Tüm oyuncular takımlarda.</p>}
       </div>
-      <button onClick={() => onJoinTeam('unassigned')} className="mt-4 w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-sm font-bold text-white">Takımdan Ayrıl</button>
+      <button onClick={() => onJoinTeam('unassignedPlayers')} className="mt-4 w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-sm font-bold text-white">Takımdan Ayrıl</button>
     </div>
   );
 }
 
-function PlayerItem({ player, isSelf, isRoomHost }) {
+function PlayerItem({ player, isSelf, isRoomHost, isDraggable }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useDraggable({
+    id: player.id,
+    disabled: !isDraggable,
+  });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    cursor: isDraggable ? 'grab' : 'default',
+  };
+
   return (
-    <div className="p-2 rounded-md text-white bg-gray-700">
+    <div ref={setNodeRef} style={style} {...listeners} {...attributes} className="p-2 rounded-md text-white bg-gray-700 select-none">
       {player.username} {isSelf ? '(Sen)' : ''} {isRoomHost ? '👑' : ''}
     </div>
   );

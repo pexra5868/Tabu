@@ -443,6 +443,37 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Yeni: Oyuncuyu takımlar arasında taşıma (Sürükle-Bırak için)
+  socket.on('movePlayer', ({ roomId, playerId, targetTeamId }) => {
+    const room = rooms[roomId];
+    if (!room || room.host !== socket.id || room.gameState !== GAME_STATES.WAITING) return;
+
+    let playerToMove;
+    let sourceTeamKey;
+
+    // Oyuncuyu mevcut konumundan bul ve kaldır
+    const allTeamKeys = [...Object.keys(room.teams), 'unassignedPlayers'];
+    for (const key of allTeamKeys) {
+      const collection = key === 'unassignedPlayers' ? room.unassignedPlayers : room.teams[key].players;
+      const playerIndex = collection.findIndex(p => p.id === playerId);
+      if (playerIndex > -1) {
+        playerToMove = collection.splice(playerIndex, 1)[0];
+        sourceTeamKey = key;
+        break;
+      }
+    }
+
+    // Oyuncuyu yeni hedefine ekle
+    if (playerToMove) {
+      if (targetTeamId === 'unassignedPlayers') {
+        room.unassignedPlayers.push(playerToMove);
+      } else if (room.teams[targetTeamId]) {
+        room.teams[targetTeamId].players.push(playerToMove);
+      }
+      io.to(roomId).emit('roomUpdate', room);
+    }
+  });
+
   // Yeni: Takım ismini değiştirme olayı
   socket.on('changeTeamName', ({ roomId, teamId, newName }) => {
     const room = rooms[roomId];
