@@ -26,12 +26,6 @@ let db;
 let usersCollection;
 let scoresCollection; // Skorları saklamak için yeni koleksiyon
 
-// --- Middleware ve API Endpoint'leri ---
-// Bu blok, sunucu dinlemeye başlamadan ÖNCE tanımlanmalıdır.
-
-app.use(cors()); // CORS middleware'ini en başa alıyoruz.
-app.use(express.json()); // JSON body parser
-
 // --- Test Verisi Ekleme Fonksiyonu ---
 async function seedDatabase() {
   try {
@@ -88,29 +82,13 @@ async function seedDatabase() {
   }
 }
 
-// Sunucu başlamadan önce veritabanına bağlan
-MongoClient.connect(MONGO_URL)
-  .then(async (client) => {
-    console.log('MongoDB veritabanına başarıyla bağlanıldı.');
-    db = client.db(DB_NAME);
-    usersCollection = db.collection('users');
-    scoresCollection = db.collection('scores'); // Koleksiyonu başlat
-    
-    // Veritabanı boşsa test verilerini ekle
-    await seedDatabase();
+// --- Middleware ve API Endpoint'leri ---
+// Bu blok, sunucu dinlemeye başlamadan ÖNCE tanımlanmalıdır.
 
-    // Sunucuyu `app.listen` yerine `server.listen` ile başlatıyoruz
-    server.listen(PORT, () => {
-      console.log(`Backend sunucusu http://localhost:${PORT} adresinde çalışıyor.`);
-    });
-  })
-  .catch(error => {
-    console.error('MongoDB bağlantı hatası:', error);
-    process.exit(1); // Bağlantı başarısız olursa uygulamayı sonlandır
-  });
+app.use(cors()); // CORS middleware'ini en başa alıyoruz.
+app.use(express.json()); // JSON body parser
 
 // JWT Doğrulama Middleware'i
-// Bu middleware, token gerektiren endpoint'lerin başına eklenecek.
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -130,49 +108,37 @@ function authenticateToken(req, res, next) {
 
 // Kayıt (Register) Endpoint'i
 app.post('/api/register', async (req, res) => {
-  try {
-    const { username, password } = req.body;
+  // ... (Mevcut kayıt kodunuz burada)
+});
 
-    if (!username || !password) {
-      return res.status(400).json({ message: 'Kullanıcı adı ve şifre zorunludur.' });
-    }
+// Giriş (Login) Endpoint'i
+app.post('/api/login', async (req, res) => {
+  // ... (Mevcut giriş kodunuz burada)
+});
 
-    // Kullanıcı adının daha önce alınıp alınmadığını kontrol et
-    const existingUser = await usersCollection.findOne({ username });
-    if (existingUser) {
-      return res.status(409).json({ message: 'Bu kullanıcı adı zaten alınmış.' });
-    }
+// Skor kaydetme Endpoint'i
+app.post('/api/scores', authenticateToken, async (req, res) => {
+  // ... (Mevcut skor kaydetme kodunuz burada)
+});
 
-    // Şifreyi hash'le (güvenli hale getir)
-    const hashedPassword = await bcrypt.hash(password, 10); // 10, hash'leme zorluk seviyesidir.
+// Oyun geçmişini getirme Endpoint'i
+app.get('/api/users/:userId/history', authenticateToken, async (req, res) => {
+  // ... (Mevcut oyun geçmişi kodunuz burada)
+});
 
-    // Yeni kullanıcıyı veritabanına ekle
-    const newUser = {
-      username,
-      password: hashedPassword,
-      wins: 0,
-      losses: 0,
-    };
-    const result = await usersCollection.insertOne(newUser);
+// Giriş yapmış kullanıcının bilgilerini getirme
+app.get('/api/users/me', authenticateToken, async (req, res) => {
+  // ... (Mevcut kullanıcı bilgisi kodunuz burada)
+});
 
-    // JWT Payload'ını oluştur
-    const payload = { userId: result.insertedId, username: username };
-    // Token'ı imzala (1 saat geçerli)
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
+// Liderlik tablosunu getirme Endpoint'i
+app.get('/api/leaderboard', async (req, res) => {
+  // ... (Mevcut liderlik tablosu kodunuz burada)
+});
 
-    // Frontend'e başarılı yanıtı gönder
-    res.status(201).json({
-      _id: result.insertedId, // Frontend'in beklemesi için _id olarak gönderelim
-      message: 'Kullanıcı başarıyla oluşturuldu!',
-      userId: result.insertedId,
-      username: username,
-      token: token
-    });
-
-  } catch (error) {
-    console.error('Kayıt sırasında hata:', error);
-    res.status(500).json({ message: 'Sunucu hatası oluştu.' });
-  }
+// Çok oyunculu galibiyetlere göre liderlik tablosu
+app.get('/api/leaderboard/wins', async (req, res) => {
+  // ... (Mevcut galibiyet liderlik tablosu kodunuz burada)
 });
 
 // Helper: Çok oyunculu oyun bittiğinde istatistikleri güncelle
@@ -196,6 +162,28 @@ async function updatePlayerStats(room) {
 
   await Promise.all([...winUpdates, ...lossUpdates]);
 }
+
+
+// Sunucu başlamadan önce veritabanına bağlan
+MongoClient.connect(MONGO_URL)
+  .then(async (client) => {
+    console.log('MongoDB veritabanına başarıyla bağlanıldı.');
+    db = client.db(DB_NAME);
+    usersCollection = db.collection('users');
+    scoresCollection = db.collection('scores'); // Koleksiyonu başlat
+    
+    // Veritabanı boşsa test verilerini ekle
+    await seedDatabase();
+
+    // Sunucuyu `app.listen` yerine `server.listen` ile başlatıyoruz
+    server.listen(PORT, () => {
+      console.log(`Backend sunucusu http://localhost:${PORT} adresinde çalışıyor.`);
+    });
+  })
+  .catch(error => {
+    console.error('MongoDB bağlantı hatası:', error);
+    process.exit(1); // Bağlantı başarısız olursa uygulamayı sonlandır
+  });
 
 // --- Multiplayer Game Logic ---
 
@@ -664,48 +652,6 @@ app.get('/api/leaderboard/wins', async (req, res) => {
     res.status(200).json(leaderboard);
   } catch (error) {
     console.error('Galibiyet liderlik tablosu alınırken hata:', error);
-    res.status(500).json({ message: 'Sunucu hatası oluştu.' });
-  }
-});
-
-// Giriş (Login) Endpoint'i
-app.post('/api/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-      return res.status(400).json({ message: 'Kullanıcı adı ve şifre zorunludur.' });
-    }
-
-    // Kullanıcıyı veritabanında bul
-    const user = await usersCollection.findOne({ username });
-    if (!user) {
-      return res.status(401).json({ message: 'Kullanıcı adı veya şifre hatalı.' });
-    }
-
-    // Gelen şifre ile veritabanındaki hash'lenmiş şifreyi karşılaştır
-    const isPasswordMatch = await bcrypt.compare(password, user.password);
-    if (!isPasswordMatch) {
-      return res.status(401).json({ message: 'Kullanıcı adı veya şifre hatalı.' });
-    }
-
-    // JWT Payload'ını oluştur
-    const payload = { userId: user._id, username: user.username };
-    // Token'ı imzala (1 saat geçerli)
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
-
-    // Başarılı giriş
-    console.log('Kullanıcı giriş yaptı:', user.username);
-    res.status(200).json({
-      _id: user._id, // Frontend'in beklemesi için _id olarak gönderelim
-      message: 'Giriş başarılı!',
-      userId: user._id,
-      username: user.username,
-      token: token
-    });
-
-  } catch (error) {
-    console.error('Giriş sırasında hata:', error);
     res.status(500).json({ message: 'Sunucu hatası oluştu.' });
   }
 });
