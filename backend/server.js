@@ -26,176 +26,6 @@ let db;
 let usersCollection;
 let scoresCollection; // Skorları saklamak için yeni koleksiyon
 
-// --- Middleware ve API Endpoint'leri ---
-// Bu blok, sunucu dinlemeye başlamadan ÖNCE tanımlanmalıdır.
-
-app.use(cors()); // CORS middleware'ini en başa alıyoruz.
-app.use(express.json()); // JSON body parser
-
-// JWT Doğrulama Middleware'i
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (token == null) {
-    return res.status(401).json({ message: 'Yetkilendirme token\'ı bulunamadı.' });
-  }
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ message: 'Geçersiz token.' });
-    }
-    req.user = user;
-    next();
-  });
-}
-
-// Kayıt (Register) Endpoint'i
-app.post('/api/register', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-      return res.status(400).json({ message: 'Kullanıcı adı ve şifre zorunludur.' });
-    }
-
-    const existingUser = await usersCollection.findOne({ username });
-    if (existingUser) {
-      return res.status(409).json({ message: 'Bu kullanıcı adı zaten alınmış.' });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = {
-      username,
-      password: hashedPassword,
-      wins: 0,
-      losses: 0,
-    };
-    const result = await usersCollection.insertOne(newUser);
-
-    const payload = { userId: result.insertedId, username: username };
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
-
-    res.status(201).json({
-      _id: result.insertedId,
-      message: 'Kullanıcı başarıyla oluşturuldu!',
-      userId: result.insertedId,
-      username: username,
-      token: token
-    });
-
-  } catch (error) {
-    console.error('Kayıt sırasında hata:', error);
-    res.status(500).json({ message: 'Sunucu hatası oluştu.' });
-  }
-});
-
-// Giriş (Login) Endpoint'i
-app.post('/api/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-      return res.status(400).json({ message: 'Kullanıcı adı ve şifre zorunludur.' });
-    }
-
-    const user = await usersCollection.findOne({ username });
-    if (!user) {
-      return res.status(401).json({ message: 'Kullanıcı adı veya şifre hatalı.' });
-    }
-
-    const isPasswordMatch = await bcrypt.compare(password, user.password);
-    if (!isPasswordMatch) {
-      return res.status(401).json({ message: 'Kullanıcı adı veya şifre hatalı.' });
-    }
-
-    const payload = { userId: user._id, username: user.username };
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
-
-    console.log('Kullanıcı giriş yaptı:', user.username);
-    res.status(200).json({
-      _id: user._id,
-      message: 'Giriş başarılı!',
-      userId: user._id,
-      username: user.username,
-      token: token
-    });
-
-  } catch (error) {
-    console.error('Giriş sırasında hata:', error);
-    res.status(500).json({ message: 'Sunucu hatası oluştu.' });
-  }
-});
-
-// Skor kaydetme Endpoint'i
-app.post('/api/scores', authenticateToken, async (req, res) => {
-  try {
-    const { score, category } = req.body;
-    const { userId, username } = req.user;
-
-    const newScore = {
-      userId: new ObjectId(userId),
-      username,
-      score,
-      category,
-      date: new Date(),
-    };
-
-    await scoresCollection.insertOne(newScore);
-    res.status(201).json({ message: 'Skor başarıyla kaydedildi.' });
-  } catch (error) {
-    console.error('Skor kaydetme sırasında hata:', error);
-    res.status(500).json({ message: 'Sunucu hatası oluştu.' });
-  }
-});
-
-// Oyun geçmişini getirme Endpoint'i
-app.get('/api/users/:userId/history', authenticateToken, async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const history = await scoresCollection.find({ userId: new ObjectId(userId) }).sort({ date: -1 }).toArray();
-    res.status(200).json(history);
-  } catch (error) {
-    console.error('Oyun geçmişi alınırken hata:', error);
-    res.status(500).json({ message: 'Sunucu hatası oluştu.' });
-  }
-});
-
-// Giriş yapmış kullanıcının bilgilerini getirme
-app.get('/api/users/me', authenticateToken, async (req, res) => {
-  try {
-    const user = await usersCollection.findOne({ _id: new ObjectId(req.user.userId) }, { projection: { password: 0 } });
-    if (!user) return res.status(404).json({ message: 'Kullanıcı bulunamadı.' });
-    res.status(200).json(user);
-  } catch (error) {
-    console.error('Kullanıcı bilgisi alınırken hata:', error);
-    res.status(500).json({ message: 'Sunucu hatası oluştu.' });
-  }
-});
-
-// Liderlik tablosunu getirme Endpoint'i
-app.get('/api/leaderboard', async (req, res) => {
-  try {
-    const leaderboard = await scoresCollection.find({}).sort({ score: -1 }).limit(10).toArray();
-    res.status(200).json(leaderboard);
-  } catch (error) {
-    console.error('Liderlik tablosu alınırken hata:', error);
-    res.status(500).json({ message: 'Sunucu hatası oluştu.' });
-  }
-});
-
-// Çok oyunculu galibiyetlere göre liderlik tablosu
-app.get('/api/leaderboard/wins', async (req, res) => {
-  try {
-    const leaderboard = await usersCollection.find({ wins: { $gt: 0 } }).sort({ wins: -1 }).limit(10).project({ password: 0 }).toArray();
-    res.status(200).json(leaderboard);
-  } catch (error) {
-    console.error('Galibiyet liderlik tablosu alınırken hata:', error);
-    res.status(500).json({ message: 'Sunucu hatası oluştu.' });
-  }
-});
-
 // --- Test Verisi Ekleme Fonksiyonu ---
 async function seedDatabase() {
   try {
@@ -256,10 +86,180 @@ async function seedDatabase() {
 MongoClient.connect(MONGO_URL)
   .then(async (client) => {
     console.log('MongoDB veritabanına başarıyla bağlanıldı.');
-    db = client.db(DB_NAME);
+    const db = client.db(DB_NAME);
     usersCollection = db.collection('users');
-    scoresCollection = db.collection('scores'); // Koleksiyonu başlat
+    scoresCollection = db.collection('scores');
     
+    // --- Middleware ve API Endpoint'leri ---
+    // Bu blok, veritabanı bağlantısı kurulduktan SONRA tanımlanmalıdır.
+
+    app.use(cors());
+    app.use(express.json());
+
+    // JWT Doğrulama Middleware'i
+    function authenticateToken(req, res, next) {
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.split(' ')[1];
+
+      if (token == null) {
+        return res.status(401).json({ message: 'Yetkilendirme token\'ı bulunamadı.' });
+      }
+
+      jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) {
+          return res.status(403).json({ message: 'Geçersiz token.' });
+        }
+        req.user = user;
+        next();
+      });
+    }
+
+    // Kayıt (Register) Endpoint'i
+    app.post('/api/register', async (req, res) => {
+      try {
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+          return res.status(400).json({ message: 'Kullanıcı adı ve şifre zorunludur.' });
+        }
+
+        const existingUser = await usersCollection.findOne({ username });
+        if (existingUser) {
+          return res.status(409).json({ message: 'Bu kullanıcı adı zaten alınmış.' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const newUser = {
+          username,
+          password: hashedPassword,
+          wins: 0,
+          losses: 0,
+        };
+        const result = await usersCollection.insertOne(newUser);
+
+        const payload = { userId: result.insertedId, username: username };
+        const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
+
+        res.status(201).json({
+          _id: result.insertedId,
+          message: 'Kullanıcı başarıyla oluşturuldu!',
+          userId: result.insertedId,
+          username: username,
+          token: token
+        });
+
+      } catch (error) {
+        console.error('Kayıt sırasında hata:', error);
+        res.status(500).json({ message: 'Sunucu hatası oluştu.' });
+      }
+    });
+
+    // Giriş (Login) Endpoint'i
+    app.post('/api/login', async (req, res) => {
+      try {
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+          return res.status(400).json({ message: 'Kullanıcı adı ve şifre zorunludur.' });
+        }
+
+        const user = await usersCollection.findOne({ username });
+        if (!user) {
+          return res.status(401).json({ message: 'Kullanıcı adı veya şifre hatalı.' });
+        }
+
+        const isPasswordMatch = await bcrypt.compare(password, user.password);
+        if (!isPasswordMatch) {
+          return res.status(401).json({ message: 'Kullanıcı adı veya şifre hatalı.' });
+        }
+
+        const payload = { userId: user._id, username: user.username };
+        const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
+
+        console.log('Kullanıcı giriş yaptı:', user.username);
+        res.status(200).json({
+          _id: user._id,
+          message: 'Giriş başarılı!',
+          userId: user._id,
+          username: user.username,
+          token: token
+        });
+
+      } catch (error) {
+        console.error('Giriş sırasında hata:', error);
+        res.status(500).json({ message: 'Sunucu hatası oluştu.' });
+      }
+    });
+
+    // Skor kaydetme Endpoint'i
+    app.post('/api/scores', authenticateToken, async (req, res) => {
+      try {
+        const { score, category } = req.body;
+        const { userId, username } = req.user;
+
+        const newScore = {
+          userId: new ObjectId(userId),
+          username,
+          score,
+          category,
+          date: new Date(),
+        };
+
+        await scoresCollection.insertOne(newScore);
+        res.status(201).json({ message: 'Skor başarıyla kaydedildi.' });
+      } catch (error) {
+        console.error('Skor kaydetme sırasında hata:', error);
+        res.status(500).json({ message: 'Sunucu hatası oluştu.' });
+      }
+    });
+
+    // Oyun geçmişini getirme Endpoint'i
+    app.get('/api/users/:userId/history', authenticateToken, async (req, res) => {
+      try {
+        const { userId } = req.params;
+        const history = await scoresCollection.find({ userId: new ObjectId(userId) }).sort({ date: -1 }).toArray();
+        res.status(200).json(history);
+      } catch (error) {
+        console.error('Oyun geçmişi alınırken hata:', error);
+        res.status(500).json({ message: 'Sunucu hatası oluştu.' });
+      }
+    });
+
+    // Giriş yapmış kullanıcının bilgilerini getirme
+    app.get('/api/users/me', authenticateToken, async (req, res) => {
+      try {
+        const user = await usersCollection.findOne({ _id: new ObjectId(req.user.userId) }, { projection: { password: 0 } });
+        if (!user) return res.status(404).json({ message: 'Kullanıcı bulunamadı.' });
+        res.status(200).json(user);
+      } catch (error) {
+        console.error('Kullanıcı bilgisi alınırken hata:', error);
+        res.status(500).json({ message: 'Sunucu hatası oluştu.' });
+      }
+    });
+
+    // Liderlik tablosunu getirme Endpoint'i
+    app.get('/api/leaderboard', async (req, res) => {
+      try {
+        const leaderboard = await scoresCollection.find({}).sort({ score: -1 }).limit(10).toArray();
+        res.status(200).json(leaderboard);
+      } catch (error) {
+        console.error('Liderlik tablosu alınırken hata:', error);
+        res.status(500).json({ message: 'Sunucu hatası oluştu.' });
+      }
+    });
+
+    // Çok oyunculu galibiyetlere göre liderlik tablosu
+    app.get('/api/leaderboard/wins', async (req, res) => {
+      try {
+        const leaderboard = await usersCollection.find({ wins: { $gt: 0 } }).sort({ wins: -1 }).limit(10).project({ password: 0 }).toArray();
+        res.status(200).json(leaderboard);
+      } catch (error) {
+        console.error('Galibiyet liderlik tablosu alınırken hata:', error);
+        res.status(500).json({ message: 'Sunucu hatası oluştu.' });
+      }
+    });
+
     // Veritabanı boşsa test verilerini ekle
     await seedDatabase();
 
@@ -272,6 +272,14 @@ MongoClient.connect(MONGO_URL)
     console.error('MongoDB bağlantı hatası:', error);
     process.exit(1); // Bağlantı başarısız olursa uygulamayı sonlandır
   });
+
+// --- Multiplayer Game Logic ---
+
+const GAME_STATES = {
+  WAITING: 'waiting',
+  PLAYING: 'playing',
+  GAME_OVER: 'game-over',
+};
 
 // Helper: Çok oyunculu oyun bittiğinde istatistikleri güncelle
 async function updatePlayerStats(room) {
@@ -294,14 +302,6 @@ async function updatePlayerStats(room) {
 
   await Promise.all([...winUpdates, ...lossUpdates]);
 }
-
-// --- Multiplayer Game Logic ---
-
-const GAME_STATES = {
-  WAITING: 'waiting',
-  PLAYING: 'playing',
-  GAME_OVER: 'game-over',
-};
 
 const rooms = {};
 
