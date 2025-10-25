@@ -26,6 +26,12 @@ let db;
 let usersCollection;
 let scoresCollection; // Skorları saklamak için yeni koleksiyon
 
+// --- Middleware ve API Endpoint'leri ---
+// Bu blok, sunucu dinlemeye başlamadan ÖNCE tanımlanmalıdır.
+
+app.use(cors()); // CORS middleware'ini en başa alıyoruz.
+app.use(express.json()); // JSON body parser
+
 // --- Test Verisi Ekleme Fonksiyonu ---
 async function seedDatabase() {
   try {
@@ -102,17 +108,6 @@ MongoClient.connect(MONGO_URL)
     console.error('MongoDB bağlantı hatası:', error);
     process.exit(1); // Bağlantı başarısız olursa uygulamayı sonlandır
   });
-
-// --- Middleware ve API Endpoint'leri ---
-// Bu blok, sunucu dinlemeye başlamadan ÖNCE tanımlanmalıdır.
-
-// Middleware'ler
-app.use(cors());
-app.use(express.json());
-
-// Middleware'ler
-app.use(cors());
-app.use(express.json());
 
 // JWT Doğrulama Middleware'i
 // Bu middleware, token gerektiren endpoint'lerin başına eklenecek.
