@@ -329,13 +329,32 @@ io.on('connection', (socket) => {
   console.log('Bir kullanıcı bağlandı:', socket.id);
   // Yeni bağlanan kullanıcıya mevcut odaları gönder
   socket.emit('roomListUpdate', Object.values(rooms).map(r => ({ id: r.id, name: r.name, playerCount: r.players.length, isPrivate: r.isPrivate })));
+  
+  // Oda listesini tüm istemcilere yayınlayan yardımcı fonksiyon
+  const broadcastRoomList = async () => {
+    // Redis adapter kullanılıyorsa, odaları adapter üzerinden al
+    if (REDIS_URL) {
+      const sids = await io.of("/").adapter.sockets(new Set());
+      const allSocketIds = Array.from(sids);
+      
+      const roomList = [];
+      for (const roomId in rooms) {
+        if (rooms.hasOwnProperty(roomId)) {
+          const room = rooms[roomId];
+          // Odadaki toplam oyuncu sayısını al
+          const socketsInRoom = await io.of("/").adapter.sockets(new Set([roomId]));
+          const playerCount = socketsInRoom.size;
 
-  // Helper function to broadcast room list updates
-  const broadcastRoomList = () => {
-    const roomList = Object.values(rooms).map(r => {
-      const playerCount = (r.teams?.teamA?.players?.length || 0) + (r.teams?.teamB?.players?.length || 0) + (r.unassignedPlayers?.length || 0);
-      return { id: r.id, name: r.name, playerCount, isPrivate: r.isPrivate };
-    });
+          if (playerCount > 0) {
+            roomList.push({ id: room.id, name: room.name, playerCount, isPrivate: room.isPrivate });
+          }
+        }
+      }
+      io.emit('roomListUpdate', roomList);
+      return;
+    }
+    // Redis yoksa (yerel geliştirme), eski yöntemle devam et
+    const roomList = Object.values(rooms).map(r => ({ id: r.id, name: r.name, playerCount: r.players.length, isPrivate: r.isPrivate }));
     io.emit('roomListUpdate', roomList);
   };
 
@@ -397,7 +416,7 @@ io.on('connection', (socket) => {
     };
     socket.join(roomId);
     io.to(roomId).emit('roomUpdate', rooms[roomId]);
-    broadcastRoomList();
+    broadcastRoomList(); // broadcastRoomList artık async olduğu için await kullanabiliriz ama burada gerek yok.
     console.log(`Oda oluşturuldu: ${roomName} (${roomId}) oleh ${username}`);
   });
 
@@ -412,7 +431,7 @@ io.on('connection', (socket) => {
       const player = { id: socket.id, username, userId };
       room.unassignedPlayers.push(player);
       socket.join(roomId);
-      io.to(roomId).emit('roomUpdate', rooms[roomId]);
+      io.to(roomId).emit('roomUpdate', room);
       broadcastRoomList();
       console.log(`${username} odaya katıldı: ${roomId}`);
     } else {
