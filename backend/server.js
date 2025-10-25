@@ -103,6 +103,12 @@ MongoClient.connect(MONGO_URL)
     process.exit(1); // Bağlantı başarısız olursa uygulamayı sonlandır
   });
 
+// --- Middleware ve API Endpoint'leri ---
+// Bu blok, sunucu dinlemeye başlamadan ÖNCE tanımlanmalıdır.
+
+// Middleware'ler
+app.use(cors());
+app.use(express.json());
 
 // Middleware'ler
 app.use(cors());
